@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "framework": null,
   "buildCommand": "bash vercel-build.sh",
   "outputDirectory": "dist",
   "functions": {
