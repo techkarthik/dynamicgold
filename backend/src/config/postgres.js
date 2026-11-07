@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import dotenv from "dotenv";
 import path from "path";
+import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,7 +18,10 @@ function getPool() {
       throw new Error("DATABASE_URL is required to connect to PostgreSQL.");
     }
 
-    const ca = process.env.PG_SSL_CA?.trim().replace(/\\n/g, "\n");
+    const ca = process.env.PG_SSL_CA?.trim().replace(/\\n/g, "\n") ||
+      (new URL(connectionString).hostname.endsWith(".aivencloud.com")
+        ? readFileSync(new URL("../../certs/aiven-ca.pem", import.meta.url), "utf8")
+        : undefined);
     let ssl;
     if (ca) {
       // pg's URL SSL options override an explicit SSL object. Use the supplied
