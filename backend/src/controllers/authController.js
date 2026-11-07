@@ -102,7 +102,7 @@ export async function registerController(req, res) {
     schemaName = `tenant_${randomUUID().replace(/-/g, "")}`;
     await createTenantSchema(schemaName);
     try {
-      await syncTenantDatabaseSchema(schemaName);
+      await syncTenantDatabaseSchema(schemaName, { includeOverview: false });
       const insertResult = await masterDb.execute({
         sql: `INSERT INTO tenants (
                 email, password_hash, contact_number, schema_name,

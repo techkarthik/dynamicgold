@@ -1,7 +1,7 @@
 import { createTenantClient } from "../config/postgres.js";
 import { getTenantDatabaseOverview as getPostgresTenantDatabaseOverview } from "./postgresService.js";
 
-export async function syncTenantDatabaseSchema(schemaName) {
+export async function syncTenantDatabaseSchema(schemaName, { includeOverview = true } = {}) {
   if (!schemaName) {
     throw new Error("Tenant PostgreSQL schema name is required.");
   }
@@ -747,12 +747,12 @@ export async function syncTenantDatabaseSchema(schemaName) {
       `ALTER TABLE prepare_sku_lots ADD COLUMN rate REAL DEFAULT 0.0;`,
     ];
 
-    // Execute safe column additions in sequential batches to avoid SQLITE_BUSY table locks
-    for (const alterSql of safeAddColumns) {
-      try {
-        await client.execute(alterSql);
-      } catch (_) {}
-    }
+    // PostgreSQL supports idempotent column additions in one transaction. Avoid
+    // hundreds of network round trips during serverless account registration.
+    const migrations = safeAddColumns.map((sql) =>
+      sql.replace(/ADD COLUMN\s+/i, "ADD COLUMN IF NOT EXISTS ")
+    );
+    await client.executeMultiple(migrations.join("\n"));
 
     // --- PERFORMANCE INDEXES (Concurrent batch execution) ---
     const indexes = [
@@ -892,8 +892,15 @@ export async function syncTenantDatabaseSchema(schemaName) {
     } catch (_) { }
 
     // Count installed tables
-    const tableOverview = await getPostgresTenantDatabaseOverview(schemaName);
-    const tablesCount = tableOverview.tables.length;
+    const tableOverview = includeOverview
+      ? await getPostgresTenantDatabaseOverview(schemaName)
+      : null;
+    const tablesCount = tableOverview
+      ? tableOverview.tables.length
+      : Number((await client.execute({
+          sql: "SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'",
+          args: [schemaName],
+        })).rows[0].count);
     const executionTimeMs = Date.now() - startTime;
 
     return {
@@ -902,7 +909,7 @@ export async function syncTenantDatabaseSchema(schemaName) {
       tablesCount,
       executionTimeMs,
       appliedAt: now,
-      tables: tableOverview.tables,
+      tables: tableOverview?.tables || [],
     };
   } catch (error) {
     console.error("syncTenantDatabaseSchema error:", error);
