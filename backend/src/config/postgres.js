@@ -12,13 +12,27 @@ let pool;
 
 function getPool() {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL?.trim();
+    let connectionString = process.env.DATABASE_URL?.trim();
     if (!connectionString) {
       throw new Error("DATABASE_URL is required to connect to PostgreSQL.");
     }
 
+    const ca = process.env.PG_SSL_CA?.trim().replace(/\\n/g, "\n");
+    let ssl;
+    if (ca) {
+      // pg's URL SSL options override an explicit SSL object. Use the supplied
+      // CA with certificate and hostname verification enabled on every host.
+      const url = new URL(connectionString);
+      for (const key of ["ssl", "sslmode", "sslrootcert", "sslcert", "sslkey", "uselibpqcompat"]) {
+        url.searchParams.delete(key);
+      }
+      connectionString = url.toString();
+      ssl = { ca, rejectUnauthorized: true };
+    }
+
     pool = new Pool({
       connectionString,
+      ...(ssl ? { ssl } : {}),
       max: Number(process.env.PG_POOL_MAX || 5),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
