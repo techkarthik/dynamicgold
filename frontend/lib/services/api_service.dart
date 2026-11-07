@@ -34,6 +34,24 @@ class ApiService {
 
   ApiService({String? baseUrl}) : baseUrl = baseUrl ?? defaultBaseUrl;
 
+  Map<String, dynamic> _decodeAuthResponse(http.Response response) {
+    try {
+      final data = jsonDecode(response.body);
+      if (data is Map<String, dynamic>) return data;
+    } on FormatException {
+      // Hosting failures can return plain text or HTML instead of API JSON.
+    }
+    final timedOut = response.statusCode == 504 ||
+        response.body.contains('FUNCTION_INVOCATION_TIMEOUT');
+    return {
+      'success': false,
+      'message': timedOut
+          ? 'The server timed out. Please wait a moment and try again.'
+          : 'The server returned an unexpected response (HTTP ${response.statusCode}). '
+              'Please try again. If this continues, check the deployment logs.',
+    };
+  }
+
   Map<String, String> _headers([String? token]) {
     final headers = {'Content-Type': 'application/json'};
     if (token != null && token.isNotEmpty) {
@@ -50,7 +68,7 @@ class ApiService {
         headers: _headers(),
         body: jsonEncode({'email': email.trim()}),
       );
-      final data = jsonDecode(res.body);
+      final data = _decodeAuthResponse(res);
       return data;
     } catch (e) {
       return {
@@ -68,7 +86,7 @@ class ApiService {
         headers: _headers(),
         body: jsonEncode({'email': email.trim(), 'code': code.trim()}),
       );
-      final data = jsonDecode(res.body);
+      final data = _decodeAuthResponse(res);
       return data;
     } catch (e) {
       return {
@@ -98,7 +116,7 @@ class ApiService {
           'valid_to': validTo,
         }),
       );
-      return jsonDecode(res.body);
+      return _decodeAuthResponse(res);
     } catch (e) {
       return {'success': false, 'message': 'Registration error: $e'};
     }
@@ -115,7 +133,7 @@ class ApiService {
         headers: _headers(),
         body: jsonEncode({'email': email.trim(), 'password': password}),
       );
-      return jsonDecode(res.body);
+      return _decodeAuthResponse(res);
     } catch (e) {
       return {'success': false, 'message': 'Login error: $e'};
     }
@@ -129,7 +147,7 @@ class ApiService {
         headers: _headers(),
         body: jsonEncode({'email': email.trim()}),
       );
-      return jsonDecode(res.body);
+      return _decodeAuthResponse(res);
     } catch (e) {
       return {'success': false, 'message': 'Verification error: $e'};
     }
